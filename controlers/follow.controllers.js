@@ -144,65 +144,222 @@ export const removeFollower = async (req, res) => {
     }
 };
 
+const getFollowedWithAggregation = async (sanitizedId, currentUserId) => {
+  return await Follow.aggregate([
+    { $match: { followerId: new mongoose.Types.ObjectId(sanitizedId) } }, // Get users followed by the current browsing user
+    {
+      $lookup: {
+        from: "users", // Join with the Users collection
+        localField: "followedId",
+        foreignField: "_id",
+        as: "followedDetails",
+      },
+    },
+    { $unwind: "$followedDetails" }, // Unwind the followed user details
+    {
+      $lookup: {
+        from: "follows", // Check if the current user follows these followed users
+        let: { followedId: "$followedId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$followedId", "$$followedId"] }, // Check if the followed user matches
+                  { $eq: ["$followerId", currentUserId] }, // Ensure it's the current user following
+                ],
+              },
+            },
+          },
+        ],
+        as: "isFollowedByMe",
+      },
+    },
+    {
+      $lookup: {
+        from: "follows", // Check if the followed user is following the current user
+        let: { followedId: "$followedId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$followerId", "$$followedId"] }, // Check if the followed user follows the current user
+                  { $eq: ["$followedId", currentUserId] }, // Ensure the user being followed is the current user
+                ],
+              },
+            },
+          },
+        ],
+        as: "isFollowingMe",
+      },
+    },
+    {
+      $addFields: {
+        isFollowedByMe: { $gt: [{ $size: "$isFollowedByMe" }, 0] }, // Boolean: true if the current user follows the followed user
+        isFollowingMe: { $gt: [{ $size: "$isFollowingMe" }, 0] }, // Boolean: true if the followed user follows the current user
+      },
+    },
+    {
+      $project: {
+        "followedDetails.fullName": 1,
+        "followedDetails.profilePicture": 1,
+        "followedDetails.occupation": 1,
+        "followedDetails._id": 1,
+        isFollowedByMe: 1,
+        isFollowingMe: 1,
+      },
+    },
+  ]);
+};
+
+const getFollowedWithFind = async (currentUserId) => {
+  return await Follow.find({ followerId: currentUserId }).populate(
+    "followedId",
+    "fullName profilePicture occupation"
+  );
+};
+
 export const getAllFollowed = async (req, res) => {
-    const { _id } = req.user;
+  const queryId = req.query.id;
+  const sanitizedId = queryId === "undefined" ? undefined : queryId;
+  const currentUserId = req.user._id;
 
-    try {
-        const allFollowings = await Follow.find({ followerId: _id })
-            .populate('followedId', 'fullName profilePicture');
+  try {
+    let followed;
 
-        if (allFollowings.length === 0) {
-            return res.status(200).json({
-                message: "You are not following anyone.",
-                following: [],
-            });
-        }
-
-        return res.status(200).json({
-            message: "Following successfully retrieved!",
-            following: allFollowings,
-        });
-
-    } catch (error) {
-        console.error('Error fetching followings:', error);
-
-        return res.status(500).json({
-            message: "Server error",
-            error: error.message || "Could not fetch followings. Please try again!",
-        });
+    if (sanitizedId) {
+      followed = await getFollowedWithAggregation(sanitizedId, currentUserId);
+    } else {
+      followed = await getFollowedWithFind(currentUserId);
     }
+
+    if (!followed || followed.length === 0) {
+      return res.status(200).json({
+        message: "You are not following anyone.",
+        following: [],
+      });
+    }
+
+    return res.status(200).json({
+      message: "Followed users successfully retrieved!",
+      following: followed,
+    });
+  } catch (error) {
+    console.error("Error fetching followed data:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message || "Could not fetch followed data. Please try again!",
+    });
+  }
+};
+
+const getFollowersWithAggregation = async(sanitizedId, currentUserId) => {
+    return await Follow.aggregate([
+        { $match: { followedId: new mongoose.Types.ObjectId(sanitizedId) } }, // Get followers of the user being browsed
+        {
+            $lookup: {
+                from: 'users', // Join with the Users collection
+                localField: 'followerId',
+                foreignField: '_id',
+                as: 'followerDetails',
+            },
+        },
+        { $unwind: '$followerDetails' }, // Unwind the user details
+        {
+            $lookup: {
+                from: 'follows', // Check if current user follows these followers
+                let: { followerId: '$followerId' },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ['$followedId', '$$followerId'] }, // Check if the follower is followed by the current user
+                                    { $eq: ['$followerId', currentUserId] }, // Ensure it's the current user following
+                                ],
+                            },
+                        },
+                    },
+                ],
+                as: 'isFollowedByMe',
+            },
+        },
+        {
+            $lookup: {
+                from: 'follows', // Check if the follower is following the current user
+                let: { followerId: '$followerId' },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ['$followerId', '$$followerId'] }, // Check if the follower follows the current user
+                                    { $eq: ['$followedId', currentUserId] }, // Ensure the user being followed is the current user
+                                ],
+                            },
+                        },
+                    },
+                ],
+                as: 'isFollowingMe',
+            },
+        },
+        {
+            $addFields: {
+                isFollowedByMe: { $gt: [{ $size: '$isFollowedByMe' }, 0] }, // Boolean: true if current user follows the follower
+                isFollowingMe: { $gt: [{ $size: '$isFollowingMe' }, 0] }, // Boolean: true if the follower follows the current user
+            },
+        },
+        {
+            $project: {
+                'followerDetails.fullName': 1,
+                'followerDetails.profilePicture': 1,
+                'followerDetails.occupation': 1,
+                'followerDetails._id': 1,
+                isFollowedByMe: 1,
+                isFollowingMe: 1,
+            },
+        },
+    ]);
+    
+};
+
+const getFollowersWithFind = async(currentUserId) => {
+    return await Follow.find({ followedId: currentUserId }).populate(
+        'followerId',
+        'fullName profilePicture occupation'
+    );
 };
 
 export const getAllFollowers = async (req, res) => {
-    const { _id } = req.user; // Get the current user's ID from the request object
-
+    const queryId = req.query.id;
+    const sanitizedId = queryId === 'undefined' ? undefined : queryId;
+    const currentUserId = req.user._id;
     try {
-        // Find all followers of the current user
-        const allFollowers = await Follow.find({ followedId: _id })
-            .populate('followerId', 'fullName profilePicture'); // Populate follower details
+        let followers;
 
-        // If no followers are found, respond with a message
-        if (allFollowers.length === 0) {
+        if (sanitizedId) {
+            followers = await getFollowersWithAggregation(sanitizedId, currentUserId);
+        } else {
+            followers = await getFollowersWithFind(currentUserId);
+        }
+
+        if (!followers || followers.length === 0) {
             return res.status(200).json({
                 message: "No one is following you.",
                 followers: [],
             });
         }
 
-        // Respond with the list of followers
         return res.status(200).json({
             message: "Followers successfully retrieved!",
-            followers: allFollowers,
+            followers,
         });
-
     } catch (error) {
-        console.error('Error fetching followers:', error); // Log any errors
-
-        // Respond with a server error message
+        console.error('Error fetching followers:', error);
         return res.status(500).json({
             message: "Server error",
             error: error.message || "Could not fetch followers. Please try again!",
         });
     }
 };
-
