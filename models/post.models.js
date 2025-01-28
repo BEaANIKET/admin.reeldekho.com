@@ -39,7 +39,7 @@ const postSchema = new mongoose.Schema({
     isBoosted: {
         status: { type: Boolean, default: false },
         boostPaymentId: { type: String, default: null }
-    }
+    },
 
 }, { timestamps: true })
 
