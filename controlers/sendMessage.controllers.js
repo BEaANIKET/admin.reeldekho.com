@@ -3,6 +3,8 @@ import { Conversations } from "../models/conversations.models.js";
 import { Message } from "../models/message.models.js";
 import { User } from "../models/user.models.js";
 import { getUserSocketId, io } from "../socket.js";
+import cloudinary from "../config/cloudinaryConfig.js";
+import fs from 'fs'
 
 export const sendMessage = async (req, res) => {
   try {
@@ -10,10 +12,33 @@ export const sendMessage = async (req, res) => {
     const receiverId = req.query?.id;
     const senderId = req.user._id;
 
-    if (!message || !receiverId || !senderId) {
+    if (!receiverId || !senderId) {
       return res.status(400).json({
         message: "Missing required parameters: message, receiverId, senderId",
       });
+    }
+
+    let url = null;
+
+    if (req.file) {
+      try {
+        const result = await cloudinary.uploader.upload(req.file.path, {
+          folder: 'o2office',
+          resource_type: "auto",
+          transformation: [
+            { width: 500, crop: "scale" },
+            { quality: 'auto' },
+            { fetch_format: "auto" }
+          ]
+        });
+        url = result.secure_url;
+        fs.unlinkSync(req.file.path);
+      } catch (uploadError) {
+        console.error("Error uploading file to Cloudinary:", uploadError);
+        return res.status(500).json({
+          message: "Error uploading file",
+        });
+      }
     }
 
     let conversations = await Conversations.findOne({
@@ -30,25 +55,25 @@ export const sendMessage = async (req, res) => {
       senderId,
       receiverId,
       message,
+      file: url,
     });
 
     conversations.messages.push(newMessage._id);
-
     await conversations.save();
-    if (io) {
-      console.log('message');
 
-      io.emit('newMessage', {
+    const userSocketId = getUserSocketId(receiverId);
+    if (io && userSocketId) {
+      io.to(userSocketId).emit('newMessage', {
         _id: newMessage._id,
         senderId,
         receiverId,
         message,
         seen: false,
+        file: newMessage?.file,
         isOwn: false,
         createdAt: newMessage.createdAt,
       });
     }
-
 
     return res.status(200).json({
       message: "Message sent successfully",
@@ -59,22 +84,22 @@ export const sendMessage = async (req, res) => {
         message,
         seen: false,
         isOwn: true,
+        file: newMessage?.file,
         createdAt: newMessage.createdAt,
       }
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Error sending message:", error);
     return res.status(500).json({
+      message: "Internal server error",
       error: error.message,
-      message: "internal server error ",
     });
   }
 };
 
 export const getMessages = async (req, res) => {
   try {
-
     if (!req.query?.id || !req?.user?._id) {
       return res.status(400).json({
         message: "Missing required parameters: id",
@@ -102,6 +127,17 @@ export const getMessages = async (req, res) => {
         $unwind: "$messages",
       },
       {
+        $addFields: {
+          "messages.isOwn": {
+            $cond: {
+              if: { $eq: ["$messages.senderId", senderId] },
+              then: true,
+              else: false,
+            },
+          },
+        },
+      },
+      {
         $group: {
           _id: "$_id",
           messages: {
@@ -109,11 +145,26 @@ export const getMessages = async (req, res) => {
               _id: "$messages._id",
               senderId: "$messages.senderId",
               receiverId: "$messages.receiverId",
-              isOwn: { $cond: { if: { $eq: ["$messages.senderId", senderId] }, then: true, else: false } },
+              isOwn: "$messages.isOwn",
               message: "$messages.message",
               createdAt: "$messages.createdAt",
               updatedAt: "$messages.updatedAt",
               seen: "$messages.seen",
+              file: "$messages.file"
+            },
+          },
+          unseenCount: {
+            $sum: {
+              $cond: {
+                if: {
+                  $and: [
+                    { $eq: ["$messages.seen", false] },
+                    { $ne: ["$messages.senderId", senderId] },
+                  ],
+                },
+                then: 1,
+                else: 0,
+              },
             },
           },
         },
@@ -129,7 +180,10 @@ export const getMessages = async (req, res) => {
       });
     }
 
-    return res.status(200).json(conversations[0]);
+    return res.status(200).json({
+      conversation: conversations[0],
+      unseenCount: conversations[0].unseenCount,
+    });
   } catch (error) {
     return res.status(500).json({
       error: error.message,
@@ -137,6 +191,7 @@ export const getMessages = async (req, res) => {
     });
   }
 };
+
 
 export const getConversations = async (req, res) => {
   try {
@@ -216,6 +271,30 @@ export const info = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching user info:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export const markUnSeenMsg = async (req, res) => {
+  try {
+    const { id } = req.query;
+
+    if (!id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const result = await Message.updateMany(
+      { senderId: id, receiverId: req.user._id },
+      { $set: { seen: true } }
+    );
+
+    if (!result) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    return res.status(200).json({ message: 'Unseen message count updated successfully' });
+  } catch (error) {
+    console.error('Error marking unseen messages:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

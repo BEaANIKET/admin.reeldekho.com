@@ -25,7 +25,9 @@ import {
   fetchfaq,
   fetchpagenow,
   fetchheader,
-  getUser
+  getUser,
+  setView,
+  getView
 } from "../controlers/post.controllers.js";
 
 // import { getsearchresult, addPost, deletePost, getPosts, updatePost, uploadFile, likePost, dislikePost, getLikes, getprofile, addComment, deleteComment, getComments, savePost, removeFromSaved, getSavedPost, getReelsById } from "../controlers/post.controllers.js";
@@ -59,7 +61,6 @@ router.get('/getcomment', getComments)
 router.get('/getuser', getUser)
 
 // saved post
-
 router.post('/addSaved', verifyLogin, savePost)
 router.delete('/deletesaved', verifyLogin, removeFromSaved)
 router.get('/getSaved', verifyLogin, getSavedPost);
@@ -74,4 +75,10 @@ router.post('/report-post', verifyLogin, reportPost)
 router.get('/fetchheader', fetchheader);
 router.get('/fetchfaq', fetchfaq);
 router.get('/fetchpagenow/:id', fetchpagenow);
+
+
+// view router 
+router.post('/view', verifyLogin, setView)
+router.get('/getview', verifyLogin, getView)
+
 export default router;

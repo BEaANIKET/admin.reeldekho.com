@@ -25,12 +25,19 @@ io.on('connection', (socket) => {
         userSocketMap[userId] = socket?.id
     }
 
-    io.emit('getOnlineUser', Object.keys(userSocketMap))
+    socket.on('registerUser', (data) => {
+        console.log("user register for ", data.userId);
+
+        if (data?.userId && data.userId !== undefined) {
+            console.log("with socket for ", socket.id);
+
+            userSocketMap[data.userId] = socket.id
+        }
+    })
 
     socket.on('disconnect', () => {
         console.log("disconnect", socket.id);
         delete userSocketMap[userId]
-        io.emit('getOnlineUser', Object.keys(userSocketMap))
     })
 })
 

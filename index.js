@@ -35,6 +35,7 @@ import messageRouter from "./router/message.router.js";
 import { userRoute } from "./router/user.router.js";
 import postRouter from "./router/post.router.js";
 import { followRouter } from "./router/follow.router.js";
+import notificationsRouter from "./router/notifications.router.js";
 
 // Setup routes
 app.use("/auth", authRouter);
@@ -42,6 +43,7 @@ app.use("/message", messageRouter);
 app.use("/user", userRoute);
 app.use("/post", postRouter);
 app.use("/follow", followRouter);
+app.use('/notification', notificationsRouter)
 
 // Start server and connect to DB
 server.listen(port, () => {

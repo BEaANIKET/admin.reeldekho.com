@@ -13,7 +13,9 @@ import { SavedPost } from "../models/savedpost.model.js";
 import { razorpayInstance } from '../config/razorpayConfig.js'
 import crypto from 'crypto'
 import { ReportedPost } from "../models/reportedPost.models.js";
-
+import { Notification } from "../models/notifications.js";
+import { getUserSocketId, io } from "../socket.js";
+import { ReelView } from "../models/reelview.models.js";
 
 // Add Post
 export const addPost = async (req, res) => {
@@ -294,9 +296,17 @@ export const likePost = async (req, res) => {
         const { postId } = req.query;
         const userId = req.user._id;
 
-        const post = await Post.findById(postId);
+        const post = await Post.findById(postId).populate('userId', 'name profilePicture fullName');
         if (!post) {
             return res.status(404).json({ message: "Post not found" });
+        }
+
+        const postOwner = post.userId;
+        const postOwnerSocketId = getUserSocketId(postOwner._id);
+
+        const user = await User.findById(userId, 'name profilePicture fullName');
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
         }
 
         const like = await Likes.findOneAndDelete({ userId, postId });
@@ -305,12 +315,36 @@ export const likePost = async (req, res) => {
         } else {
             await Likes.create({ userId, postId });
             post.likes += 1;
+
+            const notification = await Notification.create({
+                userId: postOwner._id, // The post owner's ID
+                type: 'like',
+                content: 'liked your post',
+                seen: false,
+                referenceId: post._id,
+                user: {
+                    _id: user._id,
+                    name: user.name,
+                    profilePicture: user.profilePicture,
+                    fullName: user.fullName
+                }
+            });
+
+            if (postOwnerSocketId) {
+                console.log("notifications send  to " + postOwnerSocketId);
+
+                io.to(postOwnerSocketId).emit('newNotifications', notification);
+            }
         }
 
         await post.save();
 
         return res.status(200).json({
             message: like ? "Post unliked successfully" : "Post liked successfully",
+            notification: like ? null : {
+                content: `${user.name} liked your post`,
+                profilePicture: user.profilePicture,
+            },
         });
     } catch (error) {
         console.error(error);
@@ -843,6 +877,7 @@ export const reportPost = async (req, res) => {
     }
 }
 
+
 export const getUser = async (req, res) => {
     const { search } = req.query;
 
@@ -878,6 +913,76 @@ export const getUser = async (req, res) => {
             success: false,
             message: "Server error",
             error: error.message,
+        });
+    }
+};
+
+
+export const setView = async (req, res) => {
+    try {
+        const { postId } = req.query;
+        const userId = req.user._id
+
+        const view = await ReelView.find({ userId, postId })
+
+        if (view && view.length) {
+            return res.status(400).json({
+                message: "View already set",
+                status: 400
+            })
+        }
+
+        const cretedview = await ReelView.create({
+            userId,
+            postId
+        })
+
+        if (!cretedview) {
+            return res.status(400).json({
+                message: "Failed to set view",
+                status: 400
+            })
+        }
+
+        return res.status(200).json({
+            message: "View count updated successfully",
+            status: 200
+        })
+
+    } catch (error) {
+        return res.status(500).json({
+            error: error.message,
+            message: "Failed to set view count",
+            status: 500
+        })
+    }
+}
+
+export const getView = async (req, res) => {
+    try {
+        const { postId } = req.query;
+
+        if (!postId) {
+            return res.status(400).json({
+                message: "postId is required",
+                status: 400
+            });
+        }
+
+        const viewCount = await ReelView.countDocuments({ postId });
+
+        return res.status(200).json({
+            message: "View count fetched successfully",
+            viewCount,
+            status: 200
+        });
+
+    } catch (error) {
+        console.error("Error fetching view count:", error);
+        return res.status(500).json({
+            error: error.message,
+            message: "Failed to get view count",
+            status: 500
         });
     }
 };

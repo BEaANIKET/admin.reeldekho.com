@@ -13,12 +13,15 @@ const messageSchema = new mongoose.Schema({
     },
     message: {
         type: String,
-        required: true
+        // required: true
     },
     seen: {
         type: Boolean,
         default: false,
-    }
+    },
+    file: {
+        type: String,
+    },
 }, { timestamps: true })
 
 export const Message = mongoose.model('Message', messageSchema)
