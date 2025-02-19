@@ -46,8 +46,8 @@ export const getCurrentUser = async (req, res) => {
 export const userReview = async (req, res) => {
     const { id } = req.query;
     const star = req.body.star;
-    const message= req.body.message;
-    const { _id }= req.user;
+    const message = req.body.message;
+    const { _id } = req.user;
     try {
 
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
@@ -64,7 +64,7 @@ export const userReview = async (req, res) => {
             })
         }
 
-        const reviwedUser= await Review.create({
+        const reviwedUser = await Review.create({
             reviewedId: id,
             reviewerId: _id,
             totalStars: star,
@@ -100,14 +100,14 @@ export const userReview = async (req, res) => {
     }
 }
 
-export const getUsersReviewedId= async(req, res) => {
+export const getUsersReviewedId = async (req, res) => {
     const { _id } = req.user
-    try{
-        const reviewedId= await Review.find({
+    try {
+        const reviewedId = await Review.find({
             reviewerId: _id
         }).select('-_id -createdAt -updatedAt -reviewerId');
 
-        if(!reviewedId){
+        if (!reviewedId) {
             return res.status(404).json({
                 message: "User hasn't reviewed anyone!",
             })
@@ -118,7 +118,7 @@ export const getUsersReviewedId= async(req, res) => {
             reviewedId: reviewedId
         });
 
-    }catch(error) {
+    } catch (error) {
         console.log(error.message || error)
         return res.status(500).json({
             message: "Something went wrong"
@@ -126,21 +126,21 @@ export const getUsersReviewedId= async(req, res) => {
     }
 }
 
-export const getSellerReviewerdId= async(req, res) => {
+export const getSellerReviewerdId = async (req, res) => {
     const { id } = req.query
-    try{
+    try {
 
-        if(!id){
+        if (!id) {
             return res.status(400).json({
                 message: "Id is required!",
             });
         }
 
-        const reviewerId= await Review.find({
+        const reviewerId = await Review.find({
             reviewedId: id
         }).select('-createdAt -updatedAt -reviewedId').populate('reviewerId', 'profilePicture fullName _id');
 
-        if(!reviewerId){
+        if (!reviewerId) {
             return res.status(404).json({
                 message: "There are no reviewer for this seller!",
             })
@@ -151,7 +151,7 @@ export const getSellerReviewerdId= async(req, res) => {
             reviewerId: reviewerId
         });
 
-    }catch(error) {
+    } catch (error) {
         console.log(error.message || error)
         return res.status(500).json({
             message: "Something went wrong"
@@ -159,43 +159,86 @@ export const getSellerReviewerdId= async(req, res) => {
     }
 }
 
-export const setBlockUser= async (req, res) => {
-    const id= req.body.id;
+export const setBlockUser = async (req, res) => {
+    const id = req.body.id;
     const { _id } = req.user
-    try{
-        if(!id) {
+    try {
+        if (!id) {
             return res.status(400).json({ message: "User ID is required" })
         }
 
-        const existingBlock= await User.findById(_id);
+        const existingBlock = await User.findById(_id);
 
-        if(!existingBlock){
+        if (!existingBlock) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        const Block= new Set(existingBlock.block.map(String));
-        console.log(Block)
-        if(Block.has(id)){
+        const Block = new Set(existingBlock.block.map(String));
+        // console.log(Block)
+        if (Block.has(id)) {
             return res.status(409).json({ message: 'user already blocked.' });
         }
 
-        await User.updateOne(
+        const updatedUser= await User.findByIdAndUpdate(
             { _id: _id },
-            { $addToSet: { block: id } }
+            { $addToSet: { block: id } },
+            { new: true }
         )
 
         await User.updateOne(
             { _id: id },
             { $addToSet: { blockedBy: _id } }
         )
-        
+
         return res.status(201).json({
             message: "User successfully blocked!",
+            user: updatedUser
         })
-    }catch(error) {
+    } catch (error) {
         console.log(error);
         res.status(500).json({
             message: 'Something went wrong! please try again later.'
         });
     }
 }
+
+export const deleteBlock = async (req, res) => {
+    const id = req.query.id;
+    const { _id } = req.user;
+
+    try {
+        if (!id) {
+            return res.status(400).json({ message: "User ID is required" });
+        }
+
+        const user = await User.findById(_id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (!user.block.includes(id)) {
+            return res.status(409).json({ message: 'Cannot unblock a user that is not blocked.' });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            _id,
+            { $pull: { block: id } },
+            { new: true }
+        );
+
+        const updatedBlockedUser = await User.findByIdAndUpdate(
+            id,
+            { $pull: { blockedBy: _id } },
+            { new: true }
+        );
+
+        return res.status(200).json({ message: "User successfully unblocked.", user: updatedUser });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            message: 'Something went wrong! Please try again later.'
+        });
+    }
+};
