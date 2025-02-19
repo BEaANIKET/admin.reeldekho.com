@@ -27,7 +27,8 @@ import {
   fetchheader,
   getUser,
   setView,
-  getView
+  getView,
+  getUsersWhoLikedPost
 } from "../controlers/post.controllers.js";
 
 // import { getsearchresult, addPost, deletePost, getPosts, updatePost, uploadFile, likePost, dislikePost, getLikes, getprofile, addComment, deleteComment, getComments, savePost, removeFromSaved, getSavedPost, getReelsById } from "../controlers/post.controllers.js";
@@ -51,6 +52,7 @@ router.post('/like', verifyLogin, likePost);
 router.post('/dislike', verifyLogin, dislikePost);
 router.get('/getLikes', getLikes);
 router.post('/getprofile/:id', getprofile);
+router.get('/likes/getUser', getUsersWhoLikedPost);
 
 
 // comments 

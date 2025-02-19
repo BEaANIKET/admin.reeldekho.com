@@ -664,6 +664,35 @@ export const getLikes = async (req, res) => {
     }
 }
 
+export const getUsersWhoLikedPost = async(req, res) => {
+    const post_Id= req.query.postId;
+
+    try{
+        if(!post_Id){
+            return res.status(200).json({
+                message: 'PostId is Required to fetch its likes.'
+            });
+        }
+        const post= await Post.findById(post_Id);
+
+        if(!post) {
+            return res.status(404).json({
+                message: "Post not found",
+            });
+        }
+
+        const likes= await Likes.find({ postId: post_Id }).populate("userId", "fullName profilePicture").select("-createdAt -updatedAt -totalLikesCount -__v");
+
+        return res.status(200).json({ 
+            message: "users successfully fetched",
+            like_users: likes,
+        });
+
+    }catch(error) {
+        console.log(error);
+        return res.status(500).json({ message: "Something went wrong!" });
+    }
+}
 
 
 // comments 
