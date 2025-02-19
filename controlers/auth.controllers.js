@@ -7,7 +7,7 @@ import cloudinary from "../config/cloudinaryConfig.js";
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { sendOtp } from "../utils/sendMail.js";
-import { log } from "util";
+// import { log } from "util";
 
 
 const otpStore = new Map();
