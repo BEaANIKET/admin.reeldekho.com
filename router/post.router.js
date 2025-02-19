@@ -79,6 +79,6 @@ router.get('/fetchpagenow/:id', fetchpagenow);
 
 // view router 
 router.post('/view', verifyLogin, setView)
-router.get('/getview', verifyLogin, getView)
+router.get('/getview', getView)
 
 export default router;
