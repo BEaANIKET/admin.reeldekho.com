@@ -10,6 +10,10 @@ const UserSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    isVerifyed: {
+        type: Boolean,
+        default: false
+    },
     password: {
         type: String,
         // required: true
@@ -75,8 +79,8 @@ const UserSchema = new mongoose.Schema({
         type: String,
         // default: 'New York'
     },
-    block: [ {type: mongoose.Schema.Types.ObjectId} ],
-    blockedBy: [ {type: mongoose.Schema.Types.ObjectId} ],
+    block: [{ type: mongoose.Schema.Types.ObjectId }],
+    blockedBy: [{ type: mongoose.Schema.Types.ObjectId }],
 }, { timestamps: true });
 
 
